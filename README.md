@@ -1,0 +1,2 @@
+# nhmonitor
+NiceHash monitoring tool.
