@@ -107,15 +107,26 @@ func startNH() error {
 }
 
 // stopNH kill the current NiceHash process
-func stopNH() error {
+func stopNH() {
 	log.Println("Stopping NiceHash")
 	cmd := exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\"")
 	err := cmd.Run()
 	if err != nil {
 		log.Println("NiceHash failed to stop.", err)
-		return err
+		// Force stop
+		log.Println("Forcing NiceHash to stop.")
+		cmd = exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\" /F")
+		err = cmd.Run()
+		if err != nil {
+			log.Println("Force stop of NiceHash failed.", err)
+		}
+		log.Println("Forcing excavator to stop.")
+		cmd = exec.Command("taskkill", "/IM \"excavator.exe\" /F")
+		err = cmd.Run()
+		if err != nil {
+			log.Println("Force stop of excavator failed.", err)
+		}
 	}
-	return nil
 }
 
 // getWalletAddress gets the wallet address from the "wallet" file.

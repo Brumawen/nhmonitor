@@ -1,7 +1,6 @@
 # nhmonitor
 NiceHash monitoring tool written in go.
 
-# p2plocate
 nhmonitor is a tool used to monitor the status of NiceHash miner running on Windows 10.
 NiceHash Miner 2.exe tends to crash after around 8-10 hours of running.  This tool monitors the
 NiceHash webservice for the configured wallet address.  When it detects that the outstanding
