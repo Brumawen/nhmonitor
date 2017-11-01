@@ -7,8 +7,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -16,6 +19,8 @@ import (
 	"strings"
 	"time"
 )
+
+var myStatus Status
 
 func main() {
 	log.Println("------------------------")
@@ -48,33 +53,61 @@ func main() {
 	}
 
 	// Start monitoring
-	monitor(add)
+	go monitor(add)
+
+	// Start the web service
+	http.HandleFunc("/status", webStatus)
+	http.ListenAndServe(":8080", nil)
+}
+
+func webStatus(w http.ResponseWriter, req *http.Request) {
+	b, err := json.Marshal(myStatus)
+	if err != nil {
+		log.Println("Failed to serialize status.")
+	} else {
+		w.Write(b)
+	}
 }
 
 // monitor checks the outstanding balance, held for the configured wallet address, every 2 minutes.
 // If the balance has not changed, then it assumes that NiceHash has crashed and restarts it.
 func monitor(add string) {
 	log.Println("Monitoring Nice Hash...")
+	myStatus.Status = "Starting up"
 	var lastBal float64
 	for {
 		time.Sleep(2 * time.Minute)
 		//log.Println("Checking balance.")
 		s, err := GetStats(add)
-		if err == nil {
+		if err != nil {
+			myStatus.Status = fmt.Sprint("Error getting statistics. ", err)
+		} else {
 			b := s.GetBalance()
+			myStatus.LastBalance = b
 			if lastBal == 0 {
 				// First extract
 				log.Println("Balance is", b)
+				myStatus.Status = "Running"
 				lastBal = b
 			} else if lastBal == b {
 				// Balance has not changed - stopped running
-				log.Println("Balance", b, "has not changed. Restarting NiceHash")
-				stopNH()
-				startNH()
-				lastBal = 0
+				r, err := isNHRunning()
+				if err != nil {
+					myStatus.Status = fmt.Sprint("Error checking if NiceHash is running.", err)
+				} else {
+					if r {
+						log.Println("Balance", b, "has not changed. NiceHash is still running. Stopping NiceHash...")
+						stopNH()
+					} else {
+						log.Println("Balance", b, "has not changed. Starting NiceHash")
+						startNH()
+						lastBal = 0
+					}
+				}
 			} else {
 				// Work has been done - still running
 				log.Println("NiceHash running OK. Balance is", b)
+				myStatus.Status = "Running"
 				lastBal = b
 			}
 		}
@@ -83,6 +116,7 @@ func monitor(add string) {
 
 // startNH starts NiceHash running
 func startNH() error {
+	myStatus.Status = "Starting NiceHash"
 	log.Println("Starting NiceHash")
 
 	u, err := user.Current()
@@ -108,24 +142,20 @@ func startNH() error {
 
 // stopNH kill the current NiceHash process
 func stopNH() {
+	myStatus.Status = "Stopping NiceHash"
 	log.Println("Stopping NiceHash")
 	cmd := exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\"")
 	err := cmd.Run()
 	if err != nil {
 		log.Println("NiceHash failed to stop.", err)
+
 		// Force stop
 		log.Println("Forcing NiceHash to stop.")
-		cmd = exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\" /F")
-		err = cmd.Run()
-		if err != nil {
-			log.Println("Force stop of NiceHash failed.", err)
-		}
+		so, _ := exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\" /F").CombinedOutput()
+		log.Println(string(so))
 		log.Println("Forcing excavator to stop.")
-		cmd = exec.Command("taskkill", "/IM \"excavator.exe\" /F")
-		err = cmd.Run()
-		if err != nil {
-			log.Println("Force stop of excavator failed.", err)
-		}
+		so, _ = exec.Command("taskkill", "/IM \"excavator.exe\" /F").CombinedOutput()
+		log.Println(string(so))
 	}
 }
 
