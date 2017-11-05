@@ -57,10 +57,19 @@ func main() {
 
 	// Start the web service
 	http.HandleFunc("/status", webStatus)
+	http.HandleFunc("/start", webStart)
+	http.HandleFunc("/stop", webStop)
+
 	http.ListenAndServe(":8080", nil)
 }
 
 func webStatus(w http.ResponseWriter, req *http.Request) {
+	if time.Since(myStatus.LastCheck) > 2*time.Minute {
+		myStatus.Message = "Time since last check is greater than 2 minutes!"
+	} else {
+		myStatus.Message = ""
+	}
+
 	b, err := json.Marshal(myStatus)
 	if err != nil {
 		log.Println("Failed to serialize status.")
@@ -69,14 +78,40 @@ func webStatus(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func webStart(w http.ResponseWriter, req *http.Request) {
+	r, err := isNHRunning()
+	if err != nil {
+		w.Write([]byte("Error checking if NiceHash is running."))
+	} else {
+		if !r {
+			startNH()
+		}
+		webStatus(w, req)
+	}
+}
+
+func webStop(w http.ResponseWriter, req *http.Request) {
+	r, err := isNHRunning()
+	if err != nil {
+		w.Write([]byte("Error checking if NiceHash is running."))
+	} else {
+		if r {
+			stopNH()
+		}
+		webStatus(w, req)
+	}
+}
+
 // monitor checks the outstanding balance, held for the configured wallet address, every 2 minutes.
 // If the balance has not changed, then it assumes that NiceHash has crashed and restarts it.
 func monitor(add string) {
 	log.Println("Monitoring Nice Hash...")
 	myStatus.Status = "Starting up"
+	myStatus.LastCheck = time.Now()
 	var lastBal float64
 	for {
 		time.Sleep(2 * time.Minute)
+		myStatus.LastCheck = time.Now()
 		//log.Println("Checking balance.")
 		s, err := GetStats(add)
 		if err != nil {
@@ -151,10 +186,10 @@ func stopNH() {
 
 		// Force stop
 		log.Println("Forcing NiceHash to stop.")
-		so, _ := exec.Command("taskkill", "/IM \"NiceHash Miner 2.exe\" /F").CombinedOutput()
+		so, _ := exec.Command("taskkill", "/IM", "NiceHash Miner 2.exe", "/F").CombinedOutput()
 		log.Println(string(so))
 		log.Println("Forcing excavator to stop.")
-		so, _ = exec.Command("taskkill", "/IM \"excavator.exe\" /F").CombinedOutput()
+		so, _ = exec.Command("taskkill", "/IM", "excavator.exe", "/F").CombinedOutput()
 		log.Println(string(so))
 	}
 }
